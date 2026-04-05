@@ -1,0 +1,19 @@
+# Kick players who do not complete the KrepAPI handshake (no mod / wrong version).
+require-krepapi: true
+# Minimum accepted KrepAPI client mod version (see KrepAPI protocol docs for expression syntax).
+minimum-mod-version: "1.0"
+# Ticks before kicking when require-krepapi is true (20 ticks = 1 second).
+handshake-timeout-ticks: 200
+
+# Key bindings: each key is the action id sent in protocol packets (stable identifier).
+# GLFW key codes (e.g. 71 = G). Command runs as the player on key press (not release).
+#
+# bindings:
+#   open_menu:
+#     key: 71
+#     display-name: "Open server menu"
+#     override-vanilla: false
+#     category: server
+#     command: "menu"
+
+bindings: {}

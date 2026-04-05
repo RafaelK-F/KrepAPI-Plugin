@@ -1,0 +1,7 @@
+name: KrepAPI
+version: '${version}'
+main: net.shik.krepapi.plugin.KrepAPIPlugin
+api-version: '1.21.4'
+description: Config-driven KrepAPI key bindings (Paper 1.21.4–26.1.1, one jar); handshake and commands handled for you.
+authors: [ ShinKuyomi (Shik) ]
+website: https://shik.work

@@ -1,0 +1,4 @@
+rootProject.name = 'KrepAPI-Plugin'
+
+// Reuse KrepAPI protocol module (sibling repo); canonical path handles spaces (e.g. "My files").
+includeBuild(new File(settingsDir, '../KrepAPI').canonicalFile)

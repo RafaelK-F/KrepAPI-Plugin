@@ -1,0 +1,51 @@
+# --- Gradle ---
+.gradle/
+build/
+
+# Do not add a blanket `*.jar` rule — the wrapper under gradle/wrapper/ should stay tracked.
+
+# --- IDE ---
+.idea/
+*.iml
+*.ipr
+*.iws
+out/
+
+# Eclipse
+.classpath
+.project
+.settings/
+bin/
+
+# VS Code / Cursor (local settings, search history, debug configs)
+.vscode/
+
+# --- Local env & secrets (never publish) ---
+.env
+.env.*
+*.local.properties
+local.properties
+secrets.properties
+secrets.gradle
+gradle-local.properties
+
+# --- OS junk ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# --- Logs & JVM crash dumps ---
+*.log
+logs/
+hs_err_pid*
+replay_pid*
+*.hprof
+
+# --- Paper / dev server (run-paper, downloaded server jar, worlds) ---
+run/
+
+# --- Editor backups ---
+*.swp
+*.swo
+*~
