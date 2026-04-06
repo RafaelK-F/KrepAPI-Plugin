@@ -5,3 +5,14 @@ api-version: '1.21.4'
 description: Config-driven KrepAPI key bindings (Paper 1.21.4–26.1.1, one jar); handshake and commands handled for you.
 authors: [ ShinKuyomi (Shik) ]
 website: https://shik.work
+
+commands:
+  krepapi:
+    description: KrepAPI admin commands (debug, status, reload)
+    usage: /<command> <debug|status|reload>
+    permission: krepapi.admin
+
+permissions:
+  krepapi.admin:
+    description: Allows use of /krepapi admin commands
+    default: op

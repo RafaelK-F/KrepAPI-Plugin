@@ -1,3 +1,6 @@
+# Print verbose debug messages to the server console (handshake, bindings, key events, etc.).
+debug: false
+
 # Kick players who do not complete the KrepAPI handshake (no mod / wrong version).
 require-krepapi: true
 # Minimum accepted KrepAPI client mod version (see KrepAPI protocol docs for expression syntax).
