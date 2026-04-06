@@ -89,7 +89,7 @@ final class KrepAPICommand implements TabExecutor {
                 + plugin.getConfig().getString("minimum-mod-version", "1.0"), NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Bindings loaded: " + plugin.bindings().size(), NamedTextColor.YELLOW));
         for (ProtocolMessages.BindingEntry b : plugin.bindings()) {
-            sender.sendMessage(Component.text("  " + b.actionId() + " -> key " + b.key()
+            sender.sendMessage(Component.text("  " + b.actionId() + " -> key " + b.defaultKey()
                     + " -> /" + plugin.actionCommands().getOrDefault(b.actionId(), "?"), NamedTextColor.AQUA));
         }
 

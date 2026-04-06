@@ -510,7 +510,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         }
     }
 
-    private static final class PendingHandshake {
+    static final class PendingHandshake {
         final long nonce;
         final String configMin;
         final List<KrepapiVersionPolicy.Constraint> constraintsSnapshot;
