@@ -1,5 +1,7 @@
 # KrepAPI-Plugin
 
+[![mod-plugin](https://cdn.shik.work/assets/banners/.png/plugin-available-on-modrinth-r50.png)](https://modrinth.com/mod/krepapi-pl)
+
 **Run server commands when a player presses a key**—configured in a simple YAML file, no programming required.
 
 This plugin is the “server side” of [KrepAPI](https://github.com/RafaelK-F/KrepAPI). It talks to the official **KrepAPI mod** on the player’s game client, registers your custom keys, and when someone presses a key you assigned, it runs the command **as that player** (same permissions as if they typed it in chat).
