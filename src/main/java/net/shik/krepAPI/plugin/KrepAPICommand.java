@@ -14,10 +14,11 @@ import org.jetbrains.annotations.Nullable;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.shik.krepapi.protocol.KrepapiCapabilities;
+import net.shik.krepapi.protocol.KrepapiServerDebug;
 import net.shik.krepapi.protocol.ProtocolMessages;
 
 /**
- * {@code /krepapi} admin command: debug toggle, runtime status, config reload.
+ * {@code /krepapi} admin command: debug info (KrepAPI-style activation), status, reload.
  */
 final class KrepAPICommand implements TabExecutor {
 
@@ -51,18 +52,30 @@ final class KrepAPICommand implements TabExecutor {
         return true;
     }
 
-    // ── /krepapi debug [on|off] ─────────────────────────────────────────
+    // ── /krepapi debug ──────────────────────────────────────────────────
 
     private void handleDebug(CommandSender sender, String[] args) {
-        if (args.length >= 2) {
-            boolean on = args[1].equalsIgnoreCase("on") || args[1].equalsIgnoreCase("true");
-            plugin.setDebugEnabled(on);
-        } else {
-            plugin.setDebugEnabled(!plugin.isDebugEnabled());
-        }
+        boolean cfg = plugin.getConfig().getBoolean("debug-logging", false)
+                || plugin.getConfig().getBoolean("debug", false);
+        boolean jvm = "true".equalsIgnoreCase(System.getProperty(KrepapiServerDebug.JVM_PROPERTY));
+        boolean marker = new java.io.File(KrepapiServerDebug.MARKER_FILENAME).exists();
+        boolean active = plugin.isKrepapiDebugActive();
+        sender.sendMessage(Component.text("KrepAPI debug (same activation model as KrepAPI Paper + Fabric server):",
+                NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("  Effective: " + (active ? "ON" : "OFF"),
+                active ? NamedTextColor.GREEN : NamedTextColor.GRAY));
+        sender.sendMessage(Component.text("  config debug-logging (or legacy debug): " + cfg, NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("  JVM -D" + KrepapiServerDebug.JVM_PROPERTY + "=true: " + jvm,
+                NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("  marker file ./" + KrepapiServerDebug.MARKER_FILENAME + ": " + marker,
+                NamedTextColor.YELLOW));
         sender.sendMessage(Component.text(
-                "KrepAPI debug: " + (plugin.isDebugEnabled() ? "ON" : "OFF"),
-                plugin.isDebugEnabled() ? NamedTextColor.GREEN : NamedTextColor.GRAY));
+                "  When ON: NDJSON lines in plugins/" + plugin.getName() + "/debug-<time>.json",
+                NamedTextColor.GRAY));
+        if (args.length >= 2) {
+            sender.sendMessage(Component.text("Note: use config + /krepapi reload, or JVM/marker; no runtime toggle.",
+                    NamedTextColor.DARK_GRAY));
+        }
     }
 
     // ── /krepapi status [player] ────────────────────────────────────────
@@ -82,7 +95,8 @@ final class KrepAPICommand implements TabExecutor {
 
     private void showGlobalStatus(CommandSender sender) {
         sender.sendMessage(Component.text("--- KrepAPI Status ---", NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("Debug: " + (plugin.isDebugEnabled() ? "ON" : "OFF"), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("Debug: " + (plugin.isKrepapiDebugActive() ? "ON" : "OFF"),
+                NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Require mod: " + plugin.getConfig().getBoolean("require-krepapi", true),
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Min mod version: "
@@ -142,10 +156,10 @@ final class KrepAPICommand implements TabExecutor {
 
     private void handleReload(CommandSender sender) {
         plugin.reloadConfig();
-        plugin.setDebugEnabled(plugin.getConfig().getBoolean("debug", false));
+        plugin.refreshDebugLoggingAfterConfigReload();
         plugin.reloadBindings();
         sender.sendMessage(Component.text("KrepAPI config reloaded; " + plugin.bindings().size() + " binding(s)."
-                + (plugin.isDebugEnabled() ? " (debug ON)" : ""), NamedTextColor.GREEN));
+                + (plugin.isKrepapiDebugActive() ? " (debug ON)" : ""), NamedTextColor.GREEN));
     }
 
     // ── Tab completion ──────────────────────────────────────────────────
@@ -160,10 +174,6 @@ final class KrepAPICommand implements TabExecutor {
             return SUBS.stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
         }
         if (args.length == 2) {
-            if (args[0].equalsIgnoreCase("debug")) {
-                return List.of("on", "off").stream()
-                        .filter(s -> s.startsWith(args[1].toLowerCase())).toList();
-            }
             if (args[0].equalsIgnoreCase("status")) {
                 return null; // default player name completion
             }
@@ -172,8 +182,8 @@ final class KrepAPICommand implements TabExecutor {
     }
 
     private void sendUsage(CommandSender sender, String label) {
-        sender.sendMessage(Component.text("/" + label + " debug [on|off]", NamedTextColor.YELLOW)
-                .append(Component.text(" - Toggle debug logging", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/" + label + " debug", NamedTextColor.YELLOW)
+                .append(Component.text(" - How KrepAPI-style debug is enabled", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/" + label + " status [player]", NamedTextColor.YELLOW)
                 .append(Component.text(" - Show plugin/player status", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/" + label + " reload", NamedTextColor.YELLOW)

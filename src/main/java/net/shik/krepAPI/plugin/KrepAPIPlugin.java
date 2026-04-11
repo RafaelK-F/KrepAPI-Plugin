@@ -27,6 +27,7 @@ import net.shik.krepapi.protocol.KrepapiCapabilities;
 import net.shik.krepapi.protocol.KrepapiChannels;
 import net.shik.krepapi.protocol.KrepapiKickReasons;
 import net.shik.krepapi.protocol.KrepapiProtocolVersion;
+import net.shik.krepapi.protocol.KrepapiServerDebug;
 import net.shik.krepapi.protocol.KrepapiVersionPolicy;
 import net.shik.krepapi.protocol.KrepapiVersionRequirement;
 import net.shik.krepapi.protocol.ProtocolBuf;
@@ -51,31 +52,85 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
     private List<ProtocolMessages.BindingEntry> bindingEntries = List.of();
     private Map<String, String> actionToCommand = Map.of();
 
-    private volatile boolean debugEnabled;
+    /** NDJSON stream; same layout as KrepAPI Paper reference plugin. */
+    private java.io.Writer debugWriter;
+    private final Object debugLock = new Object();
 
-    // ── Debug API ─────────────────────────────────────────────────────────
+    private boolean isDebug() {
+        return getConfig().getBoolean("debug-logging", false)
+                || getConfig().getBoolean("debug", false)
+                || KrepapiServerDebug.jvmOrMarkerFileEnabled();
+    }
 
-    /** Log a debug message at INFO level if debug mode is active. */
-    void debug(String msg) {
-        if (debugEnabled) {
-            getLogger().info("[DEBUG] " + msg);
+    boolean isKrepapiDebugActive() {
+        return isDebug();
+    }
+
+    private void debug(String msg) {
+        if (!isDebug()) {
+            return;
+        }
+        getLogger().info("[KrepAPI-Debug] " + msg);
+    }
+
+    private void debugJson(String event, String fieldsJson) {
+        synchronized (debugLock) {
+            if (debugWriter == null) {
+                return;
+            }
+            try {
+                debugWriter.write("{\"ts\":" + System.currentTimeMillis()
+                        + ",\"event\":\"" + event + "\"," + fieldsJson + "}\n");
+                debugWriter.flush();
+            } catch (java.io.IOException ignored) {
+            }
         }
     }
 
-    /** Log a debug message that includes a hex dump of a raw payload. */
+    private void openDebugFile() {
+        if (!isDebug()) {
+            return;
+        }
+        synchronized (debugLock) {
+            try {
+                java.io.File dir = getDataFolder();
+                if (!dir.exists()) {
+                    dir.mkdirs();
+                }
+                java.io.File f = new java.io.File(dir, "debug-" + System.currentTimeMillis() + ".json");
+                debugWriter = new java.io.FileWriter(f, true);
+                getLogger().info("[KrepAPI-Debug] NDJSON debug log: " + f.getName());
+            } catch (java.io.IOException ex) {
+                getLogger().warning("[KrepAPI-Debug] Failed to open debug log: " + ex.getMessage());
+            }
+        }
+    }
+
+    private void closeDebugFile() {
+        synchronized (debugLock) {
+            if (debugWriter != null) {
+                try {
+                    debugWriter.close();
+                } catch (java.io.IOException ignored) {
+                }
+                debugWriter = null;
+            }
+        }
+    }
+
+    /** After {@link #reloadConfig()}, re-open or close the NDJSON file so {@code debug-logging} changes apply. */
+    void refreshDebugLoggingAfterConfigReload() {
+        closeDebugFile();
+        openDebugFile();
+    }
+
+    /** Console-only hex dump of plugin-message payloads (not written to NDJSON). */
     private void debugPayload(String prefix, byte[] payload) {
-        if (debugEnabled) {
-            String hex = HexFormat.of().withUpperCase().formatHex(payload);
-            getLogger().info("[DEBUG] " + prefix + " (" + payload.length + " bytes): " + hex);
+        if (!isDebug()) {
+            return;
         }
-    }
-
-    public boolean isDebugEnabled() {
-        return debugEnabled;
-    }
-
-    public void setDebugEnabled(boolean enabled) {
-        this.debugEnabled = enabled;
+        String hex = HexFormat.of().withUpperCase().formatHex(payload);
+        getLogger().info("[KrepAPI-Debug] " + prefix + " (" + payload.length + " bytes): " + hex);
     }
 
     // ── State accessors (for /krepapi command) ──────────────────────────
@@ -103,7 +158,6 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
     @Override
     public void onEnable() {
         saveDefaultConfig();
-        debugEnabled = getConfig().getBoolean("debug", false);
         try {
             KrepapiVersionRequirement.parse(getConfig().getString("minimum-mod-version", "1.0").trim());
         } catch (IllegalArgumentException ex) {
@@ -112,6 +166,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             return;
         }
         loadBindingConfig();
+        openDebugFile();
         registerChannels();
         getServer().getPluginManager().registerEvents(this, this);
         getServer().getMessenger().registerIncomingPluginChannel(this, KrepapiChannels.C2S_CLIENT_INFO, this);
@@ -120,11 +175,12 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         getServer().getMessenger().registerIncomingPluginChannel(this, KrepapiChannels.C2S_MOUSE_ACTION, this);
         getCommand("krepapi").setExecutor(new KrepAPICommand(this));
         getLogger().info("KrepAPI enabled; " + bindingEntries.size() + " binding(s) loaded."
-                + (debugEnabled ? " (debug ON)" : ""));
+                + (isDebug() ? " ([KrepAPI-Debug] ON)" : ""));
     }
 
     @Override
     public void onDisable() {
+        closeDebugFile();
         getServer().getMessenger().unregisterIncomingPluginChannel(this, KrepapiChannels.C2S_CLIENT_INFO);
         getServer().getMessenger().unregisterIncomingPluginChannel(this, KrepapiChannels.C2S_KEY_ACTION);
         getServer().getMessenger().unregisterIncomingPluginChannel(this, KrepapiChannels.C2S_RAW_KEY);
@@ -159,6 +215,11 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         debug("registerVersionConstraint: " + owner.getName() + " -> "
                 + (constraint.featureId() != null ? constraint.featureId() + " " : "")
                 + ">= " + constraint.minimumBuildVersion());
+        debugJson("version_constraint_registered",
+                "\"owner\":" + KrepapiServerDebug.jsonString(owner.getName())
+                        + ",\"minimumBuildVersion\":" + KrepapiServerDebug.jsonString(constraint.minimumBuildVersion())
+                        + (constraint.featureId() != null
+                        ? ",\"featureId\":" + KrepapiServerDebug.jsonString(constraint.featureId()) : ""));
     }
 
     private List<KrepapiVersionPolicy.Constraint> snapshotConstraints() {
@@ -289,6 +350,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         bindingEntries = List.copyOf(entries);
         actionToCommand = Map.copyOf(commands);
         debug("loadBindingConfig: " + entries.size() + " binding(s) loaded");
+        debugJson("bindings_loaded", "\"count\":" + entries.size());
     }
 
     private boolean utf8Within(String value, int maxBytes, String label) {
@@ -326,6 +388,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
     public void onPluginDisable(PluginDisableEvent event) {
         if (constraintsByPlugin.remove(event.getPlugin()) != null) {
             debug("onPluginDisable: cleared version constraints from " + event.getPlugin().getName());
+            debugJson("version_constraints_cleared", "\"plugin\":" + KrepapiServerDebug.jsonString(event.getPlugin().getName()));
         }
     }
 
@@ -352,6 +415,11 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 + " nonce=" + Long.toHexString(nonce) + " effectiveMin=" + effectiveMin
                 + " flags=0x" + Integer.toHexString(flags & 0xFF)
                 + " constraints=" + snap.size());
+        debugJson("handshake_begin",
+                "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                        + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                        + ",\"effectiveMin\":" + KrepapiServerDebug.jsonString(effectiveMin)
+                        + ",\"flags\":" + (flags & 0xFF));
 
         byte[] payload = ProtocolMessages.encodeHello(new ProtocolMessages.Hello(
                 KrepapiProtocolVersion.CURRENT,
@@ -383,6 +451,8 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         Player p = getServer().getPlayer(id);
         if (p != null && p.isOnline()) {
             debug("checkTimeout: kicking " + p.getName() + " (handshake timeout)");
+            debugJson("kick_handshake_timeout",
+                    "\"player\":" + KrepapiServerDebug.jsonString(p.getName()) + ",\"uuid\":\"" + id + "\"");
             p.kick(Component.text(KrepapiKickReasons.HANDSHAKE_TIMEOUT));
         }
         pending.remove(id);
@@ -392,6 +462,9 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
     public void onQuit(PlayerQuitEvent event) {
         UUID id = event.getPlayer().getUniqueId();
         debug("onQuit: " + event.getPlayer().getName() + " — clearing handshake, capabilities, cooldown");
+        debugJson("disconnect",
+                "\"player\":" + KrepapiServerDebug.jsonString(event.getPlayer().getName())
+                        + ",\"uuid\":\"" + id + "\"");
         pending.remove(id);
         clientCapabilities.remove(id);
         lastBindingCommandNanos.remove(id);
@@ -429,12 +502,19 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             debug("onClientInfo: " + player.getName() + " nonce mismatch or no pending handshake"
                     + " (expected=" + (h != null ? Long.toHexString(h.nonce) : "none")
                     + " got=" + Long.toHexString(info.challengeNonce()) + ")");
+            debugJson("handshake_rejected_nonce",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"uuid\":\"" + player.getUniqueId() + "\"");
             return;
         }
         h.answered = true;
         if (info.protocolVersion() != KrepapiProtocolVersion.CURRENT) {
             debug("onClientInfo: " + player.getName() + " protocol mismatch: client="
                     + info.protocolVersion() + " server=" + KrepapiProtocolVersion.CURRENT + ", kicking");
+            debugJson("kick_protocol_mismatch",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"clientProtocol\":" + info.protocolVersion()
+                            + ",\"serverProtocol\":" + KrepapiProtocolVersion.CURRENT);
             player.kick(Component.text(KrepapiKickReasons.PROTOCOL_MISMATCH));
             return;
         }
@@ -446,10 +526,19 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         if (fail != null) {
             debug("onClientInfo: " + player.getName() + " version check failed: "
                     + fail.reason() + " (mod=" + info.modVersion() + "), kicking");
+            debugJson("kick_version_mismatch",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
+                            + ",\"reason\":" + KrepapiServerDebug.jsonString(fail.reason()));
             player.kick(Component.text(KrepapiKickReasons.forVersionCheckFailure(fail)));
             return;
         }
         debug("onClientInfo: " + player.getName() + " handshake OK, capabilities stored");
+        debugJson("handshake_complete",
+                "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                        + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                        + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
+                        + ",\"capabilities\":\"0x" + Integer.toHexString(info.capabilities()) + "\"");
         clientCapabilities.put(player.getUniqueId(), info.capabilities());
         getServer().getScheduler().runTaskLater(this, () -> sendConfiguredBindings(player), 1L);
     }
@@ -459,6 +548,12 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             ProtocolMessages.KeyAction a = ProtocolMessages.decodeKeyAction(message);
             debug("onKeyAction: " + player.getName() + " action=" + a.actionId()
                     + " phase=" + a.phase() + " seq=" + a.sequence());
+            debugJson("key_action",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                            + ",\"actionId\":" + KrepapiServerDebug.jsonString(a.actionId())
+                            + ",\"phase\":" + a.phase()
+                            + ",\"seq\":" + a.sequence());
             if (a.phase() != ProtocolMessages.KeyAction.PHASE_PRESS) {
                 debug("onKeyAction: " + player.getName() + " phase " + a.phase() + " ignored (not PRESS)");
                 return;
@@ -478,6 +573,9 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             lastBindingCommandNanos.put(player.getUniqueId(), now);
             final String stripped = command.startsWith("/") ? command.substring(1) : command;
             debug("onKeyAction: dispatching /" + stripped + " for " + player.getName());
+            debugJson("key_command_dispatch",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"command\":" + KrepapiServerDebug.jsonString(stripped));
             getServer().getScheduler().runTask(this, () -> {
                 if (player.isOnline()) {
                     getServer().dispatchCommand(player, stripped);
@@ -494,6 +592,14 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             debug("onRawKey: " + player.getName() + " key=" + ev.key()
                     + " scancode=" + ev.scancode() + " glfwAction=" + ev.glfwAction()
                     + " modifiers=0x" + Integer.toHexString(ev.modifiers()));
+            debugJson("raw_key",
+                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                            + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                            + ",\"key\":" + ev.key()
+                            + ",\"scancode\":" + ev.scancode()
+                            + ",\"glfwAction\":" + ev.glfwAction()
+                            + ",\"modifiers\":" + ev.modifiers()
+                            + ",\"seq\":" + ev.sequence());
         } catch (RuntimeException ex) {
             getLogger().warning("Bad raw_key from " + player.getName());
         }
@@ -505,6 +611,28 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             debug("onMouseAction: " + player.getName() + " kind=" + ev.kind()
                     + " button=" + ev.button() + " glfwAction=" + ev.glfwAction()
                     + " modifiers=0x" + Integer.toHexString(ev.modifiers()));
+            if (ev.kind() == ProtocolMessages.MOUSE_ACTION_KIND_BUTTON) {
+                String actionName = switch (ev.glfwAction()) {
+                    case 0 -> "release";
+                    case 1 -> "press";
+                    default -> "unknown(" + ev.glfwAction() + ")";
+                };
+                debugJson("mouse_action",
+                        "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                                + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                                + ",\"kind\":\"button\""
+                                + ",\"button\":" + ev.button()
+                                + ",\"glfwAction\":" + KrepapiServerDebug.jsonString(actionName)
+                                + ",\"seq\":" + ev.sequence());
+            } else if (ev.kind() == ProtocolMessages.MOUSE_ACTION_KIND_SCROLL) {
+                debugJson("mouse_action",
+                        "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                                + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                                + ",\"kind\":\"scroll\""
+                                + ",\"scrollX\":" + ev.scrollDeltaX()
+                                + ",\"scrollY\":" + ev.scrollDeltaY()
+                                + ",\"seq\":" + ev.sequence());
+            }
         } catch (RuntimeException ex) {
             getLogger().warning("Bad mouse_action from " + player.getName());
         }

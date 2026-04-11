@@ -1,5 +1,7 @@
-# Print verbose debug messages to the server console (handshake, bindings, key events, etc.).
-debug: false
+# Same as KrepAPI Paper reference: console lines prefixed [KrepAPI-Debug] and NDJSON in plugins/KrepAPI-Plugin/debug-*.json.
+# Also enabled when the server JVM has -Dkrepapi.debug=true or an empty krepapi-debug.txt exists in the server working directory (Fabric dedicated parity).
+# Legacy key `debug` is still accepted if present; prefer `debug-logging` to match KrepAPI.
+debug-logging: false
 
 # Kick players who do not complete the KrepAPI handshake (no mod / wrong version).
 require-krepapi: true
