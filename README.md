@@ -1,6 +1,6 @@
 # KrepAPI-Plugin
 
-[![mod-plugin](https://cdn.shik.work/assets/banners/.png/plugin-available-on-modrinth-r50.png)](https://modrinth.com/mod/krepapi-pl)
+[![mod-plugin](https://cdn.shik.work/assets/banners/.png/mod-available-on-modrinth-r50.png)](https://modrinth.com/mod/krepapi-pl)
 
 **Run server commands when a player presses a key**—configured in a simple YAML file, no programming required.
 
