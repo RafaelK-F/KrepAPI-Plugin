@@ -1,5 +1,6 @@
 package net.shik.krepapi.plugin;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,13 +19,14 @@ import net.shik.krepapi.protocol.KrepapiServerDebug;
 import net.shik.krepapi.protocol.ProtocolMessages;
 
 /**
- * {@code /krepapi} admin command: debug info (KrepAPI-style activation), status, reload.
+ * {@code /krepapi} admin command: settings (persisted to {@code config.yml} where applicable), status, reload.
  */
 final class KrepAPICommand implements TabExecutor {
 
     private static final String PERM = "krepapi.admin";
 
-    private static final List<String> SUBS = List.of("debug", "status", "reload");
+    private static final List<String> SUBS = List.of(
+            "debug", "status", "reload", "require-mod", "min-version", "handshake-timeout");
 
     private final KrepAPIPlugin plugin;
 
@@ -47,6 +49,9 @@ final class KrepAPICommand implements TabExecutor {
             case "debug" -> handleDebug(sender, args);
             case "status" -> handleStatus(sender, args);
             case "reload" -> handleReload(sender);
+            case "require-mod" -> handleRequireMod(sender, args);
+            case "min-version" -> handleMinVersion(sender, args);
+            case "handshake-timeout" -> handleHandshakeTimeout(sender, args);
             default -> sendUsage(sender, label);
         }
         return true;
@@ -55,6 +60,34 @@ final class KrepAPICommand implements TabExecutor {
     // ── /krepapi debug ──────────────────────────────────────────────────
 
     private void handleDebug(CommandSender sender, String[] args) {
+        if (args.length >= 2) {
+            String mode = args[1].toLowerCase();
+            if (mode.equals("on") || mode.equals("true")) {
+                plugin.saveDebugLoggingToConfig(true);
+                sender.sendMessage(Component.text(
+                        "config.yml: debug-logging=true (saved). JVM/marker can still force debug ON.",
+                        NamedTextColor.GREEN));
+                return;
+            }
+            if (mode.equals("off") || mode.equals("false")) {
+                plugin.saveDebugLoggingToConfig(false);
+                sender.sendMessage(Component.text(
+                        "config.yml: debug-logging=false (saved). JVM/marker can still force debug ON.",
+                        NamedTextColor.GREEN));
+                return;
+            }
+            if (mode.equals("toggle")) {
+                boolean cur = plugin.getConfig().getBoolean("debug-logging", false)
+                        || plugin.getConfig().getBoolean("debug", false);
+                plugin.saveDebugLoggingToConfig(!cur);
+                sender.sendMessage(Component.text(
+                        "config.yml: debug-logging=" + !cur + " (saved).",
+                        NamedTextColor.GREEN));
+                return;
+            }
+            sender.sendMessage(Component.text("Usage: /krepapi debug [on|off|toggle]", NamedTextColor.RED));
+            return;
+        }
         boolean cfg = plugin.getConfig().getBoolean("debug-logging", false)
                 || plugin.getConfig().getBoolean("debug", false);
         boolean jvm = "true".equalsIgnoreCase(System.getProperty(KrepapiServerDebug.JVM_PROPERTY));
@@ -72,10 +105,67 @@ final class KrepAPICommand implements TabExecutor {
         sender.sendMessage(Component.text(
                 "  When ON: NDJSON lines in plugins/" + plugin.getName() + "/debug-<time>.json",
                 NamedTextColor.GRAY));
-        if (args.length >= 2) {
-            sender.sendMessage(Component.text("Note: use config + /krepapi reload, or JVM/marker; no runtime toggle.",
-                    NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("  Change file: /krepapi debug on|off|toggle", NamedTextColor.DARK_GRAY));
+    }
+
+    private void handleRequireMod(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /krepapi require-mod <on|off|toggle>", NamedTextColor.RED));
+            return;
         }
+        String mode = args[1].toLowerCase();
+        boolean cur = plugin.getConfig().getBoolean("require-krepapi", true);
+        boolean next;
+        if (mode.equals("on") || mode.equals("true")) {
+            next = true;
+        } else if (mode.equals("off") || mode.equals("false")) {
+            next = false;
+        } else if (mode.equals("toggle")) {
+            next = !cur;
+        } else {
+            sender.sendMessage(Component.text("Usage: /krepapi require-mod <on|off|toggle>", NamedTextColor.RED));
+            return;
+        }
+        plugin.saveRequireKrepapiToConfig(next);
+        sender.sendMessage(Component.text("config.yml: require-krepapi=" + next + " (saved).", NamedTextColor.GREEN));
+    }
+
+    private void handleMinVersion(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /krepapi min-version <version>", NamedTextColor.RED));
+            return;
+        }
+        String ver = String.join(" ", Arrays.copyOfRange(args, 1, args.length)).trim();
+        try {
+            plugin.saveMinimumModVersionToConfig(ver);
+        } catch (IllegalArgumentException ex) {
+            sender.sendMessage(Component.text("Invalid version: " + ex.getMessage(), NamedTextColor.RED));
+            return;
+        }
+        sender.sendMessage(Component.text("config.yml: minimum-mod-version=\"" + ver + "\" (saved).",
+                NamedTextColor.GREEN));
+    }
+
+    private void handleHandshakeTimeout(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Usage: /krepapi handshake-timeout <ticks>", NamedTextColor.RED));
+            return;
+        }
+        long ticks;
+        try {
+            ticks = Long.parseLong(args[1]);
+        } catch (NumberFormatException ex) {
+            sender.sendMessage(Component.text("Not a number: " + args[1], NamedTextColor.RED));
+            return;
+        }
+        try {
+            plugin.saveHandshakeTimeoutTicks(ticks);
+        } catch (IllegalArgumentException ex) {
+            sender.sendMessage(Component.text(ex.getMessage(), NamedTextColor.RED));
+            return;
+        }
+        sender.sendMessage(Component.text("config.yml: handshake-timeout-ticks=" + ticks + " (saved).",
+                NamedTextColor.GREEN));
     }
 
     // ── /krepapi status [player] ────────────────────────────────────────
@@ -174,7 +264,13 @@ final class KrepAPICommand implements TabExecutor {
             return SUBS.stream().filter(s -> s.startsWith(args[0].toLowerCase())).toList();
         }
         if (args.length == 2) {
-            if (args[0].equalsIgnoreCase("status")) {
+            String sub = args[0].toLowerCase();
+            if (sub.equals("debug") || sub.equals("require-mod")) {
+                return List.of("on", "off", "toggle").stream()
+                        .filter(s -> s.startsWith(args[1].toLowerCase()))
+                        .toList();
+            }
+            if (sub.equals("status")) {
                 return null; // default player name completion
             }
         }
@@ -182,11 +278,17 @@ final class KrepAPICommand implements TabExecutor {
     }
 
     private void sendUsage(CommandSender sender, String label) {
-        sender.sendMessage(Component.text("/" + label + " debug", NamedTextColor.YELLOW)
-                .append(Component.text(" - How KrepAPI-style debug is enabled", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/" + label + " debug [on|off|toggle]", NamedTextColor.YELLOW)
+                .append(Component.text(" - Status or persist debug-logging to config.yml", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/" + label + " require-mod <on|off|toggle>", NamedTextColor.YELLOW)
+                .append(Component.text(" - Persist require-krepapi", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/" + label + " min-version <version>", NamedTextColor.YELLOW)
+                .append(Component.text(" - Persist minimum-mod-version", NamedTextColor.GRAY)));
+        sender.sendMessage(Component.text("/" + label + " handshake-timeout <ticks>", NamedTextColor.YELLOW)
+                .append(Component.text(" - Persist handshake-timeout-ticks", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/" + label + " status [player]", NamedTextColor.YELLOW)
                 .append(Component.text(" - Show plugin/player status", NamedTextColor.GRAY)));
         sender.sendMessage(Component.text("/" + label + " reload", NamedTextColor.YELLOW)
-                .append(Component.text(" - Reload config.yml", NamedTextColor.GRAY)));
+                .append(Component.text(" - Reload config.yml from disk", NamedTextColor.GRAY)));
     }
 }

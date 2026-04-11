@@ -124,6 +124,34 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         openDebugFile();
     }
 
+    /** Persists {@code debug-logging} and removes legacy {@code debug} so file and runtime match. */
+    void saveDebugLoggingToConfig(boolean enabled) {
+        getConfig().set("debug-logging", enabled);
+        getConfig().set("debug", null);
+        saveConfig();
+        refreshDebugLoggingAfterConfigReload();
+    }
+
+    void saveRequireKrepapiToConfig(boolean require) {
+        getConfig().set("require-krepapi", require);
+        saveConfig();
+    }
+
+    void saveMinimumModVersionToConfig(@NotNull String version) {
+        String trimmed = version.trim();
+        KrepapiVersionRequirement.parse(trimmed);
+        getConfig().set("minimum-mod-version", trimmed);
+        saveConfig();
+    }
+
+    void saveHandshakeTimeoutTicks(long ticks) {
+        if (ticks < 1L) {
+            throw new IllegalArgumentException("handshake-timeout-ticks must be at least 1");
+        }
+        getConfig().set("handshake-timeout-ticks", ticks);
+        saveConfig();
+    }
+
     /** Console-only hex dump of plugin-message payloads (not written to NDJSON). */
     private void debugPayload(String prefix, byte[] payload) {
         if (!isDebug()) {

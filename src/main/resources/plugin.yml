@@ -8,8 +8,8 @@ website: https://shik.work
 
 commands:
   krepapi:
-    description: KrepAPI admin commands (debug, status, reload)
-    usage: /<command> <debug|status|reload>
+    description: KrepAPI admin commands (settings, status, reload)
+    usage: /<command> <debug|require-mod|min-version|handshake-timeout|status|reload>
     permission: krepapi.admin
 
 permissions:
