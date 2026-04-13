@@ -22,15 +22,26 @@ minimum-mod-version: "1.0"
 # Ticks before kicking when require-krepapi is true (20 ticks = 1 second).
 handshake-timeout-ticks: 200
 
-# Key bindings: each key is the action id sent in protocol packets (stable identifier).
-# GLFW key codes (e.g. 71 = G). Command runs as the player on key press (not release).
+# Key bindings: each entry key is the action id (stable protocol identifier); values are UI label, key, and command.
+# - key: GLFW key code (e.g. 71 = G, 78 = N). See GLFW docs / key tables.
+# - display-name: Shown in the client bindings UI.
+# - override-vanilla: if true, the server may override the vanilla action for that key.
+# - category: UI grouping (short free-form string).
+# - command: Run as the player on key press (not release); leading / is optional.
 #
-# bindings:
+# Copy-paste example (commented):
 #   open_menu:
 #     key: 71
-#     display-name: "Open server menu"
+#     display-name: "Open menu"
 #     override-vanilla: false
 #     category: server
 #     command: "menu"
 
-bindings: {}
+bindings:
+  # Starter binding: G runs /help — edit or remove this entry.
+  krepapi_example_help:
+    key: 71
+    display-name: "Example: help (/help)"
+    override-vanilla: false
+    category: server
+    command: "help"

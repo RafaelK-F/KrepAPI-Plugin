@@ -117,15 +117,15 @@ public final class KrepAPIPluginUpdateService {
                 .append(Component.text(" ╮", NamedTextColor.DARK_GRAY));
 
         Component sub = Component.text(
-                "Für deine Minecraft-Version liegt ein neuer Plugin-Build vor.",
+                "A newer plugin build is available for your Minecraft version.",
                 NamedTextColor.GRAY);
 
         String cur = snap.currentVersion != null ? snap.currentVersion : "?";
         String lat = snap.latestVersion != null ? snap.latestVersion : "?";
-        Component verLine = Component.text("Installiert: ", NamedTextColor.DARK_GRAY)
+        Component verLine = Component.text("Installed: ", NamedTextColor.DARK_GRAY)
                 .append(Component.text(cur, NamedTextColor.RED))
                 .append(Component.text("  →  ", NamedTextColor.DARK_GRAY))
-                .append(Component.text("Neueste: ", NamedTextColor.DARK_GRAY))
+                .append(Component.text("Latest: ", NamedTextColor.DARK_GRAY))
                 .append(Component.text(lat, NamedTextColor.GREEN));
 
         Component click = Component.text(
@@ -135,11 +135,11 @@ public final class KrepAPIPluginUpdateService {
                         .decorate(TextDecoration.BOLD, TextDecoration.UNDERLINED)
                         .clickEvent(ClickEvent.openUrl(openUrl))
                         .hoverEvent(HoverEvent.showText(Component.text(
-                                "Download im Browser öffnen\n" + openUrl, NamedTextColor.WHITE)))
+                                "Open download in browser\n" + openUrl, NamedTextColor.WHITE)))
                         .build());
 
         Component hint = Component.text(
-                "JAR im Ordner plugins/ ersetzen und Server neu starten. (Öffnet den Browser.)",
+                "Replace the JAR in plugins/ and restart the server. (Opens your browser.)",
                 NamedTextColor.DARK_GRAY, TextDecoration.ITALIC);
 
         player.sendMessage(Component.empty());
