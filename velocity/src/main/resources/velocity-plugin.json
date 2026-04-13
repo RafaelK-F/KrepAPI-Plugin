@@ -1,0 +1,8 @@
+{
+  "id": "krepapiforward",
+  "name": "KrepAPI Forward",
+  "version": "${version}",
+  "description": "Registers krepapi:* plugin channels and forces client-backend forwarding for the KrepAPI handshake.",
+  "authors": ["shik"],
+  "main": "net.shik.krepapi.velocity.KrepapiVelocityForwardPlugin"
+}

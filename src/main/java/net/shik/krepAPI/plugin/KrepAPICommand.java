@@ -199,6 +199,10 @@ final class KrepAPICommand implements TabExecutor {
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Min mod version: "
                 + plugin.getConfig().getString("minimum-mod-version", "1.0"), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("Handshake: send delay "
+                + plugin.getConfig().getLong("handshake-send-delay-ticks", 0L) + " ticks, timeout "
+                + plugin.getConfig().getLong("handshake-timeout-ticks", 200L) + " ticks after hello",
+                NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Bindings loaded: " + plugin.bindings().size(), NamedTextColor.YELLOW));
         for (ProtocolMessages.BindingEntry b : plugin.bindings()) {
             sender.sendMessage(Component.text("  " + b.actionId() + " -> key " + b.defaultKey()

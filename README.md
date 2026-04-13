@@ -36,6 +36,10 @@ This plugin is the “server side” of [KrepAPI](https://github.com/RafaelK-F/K
 4. Edit **`plugins/KrepAPI/config.yml`** (bindings, timeouts, etc.).
 5. **Restart** the server so changes apply reliably (avoid `/reload` unless you know what you’re doing).
 
+### Behind Velocity (or another proxy)
+
+If players connect through **Velocity** (or similar), plugin messages may not reach the backend unless the proxy **forwards** them. Build **`KrepAPI-Velocity-Forward-*.jar`** from this repo (`./gradlew :velocity:jar`) and put **only that JAR** on the **Velocity** `plugins` folder (not on Paper). It registers the `krepapi:*` channels and forwards them to the connected server. Without this, the Paper plugin may log `S2C krepapi:s2c_hello` but never receive `C2S` from the client—handshake times out.
+
 ---
 
 ## Configure (`config.yml`)
@@ -46,6 +50,7 @@ This plugin is the “server side” of [KrepAPI](https://github.com/RafaelK-F/K
 |---------|---------|------------------|
 | `require-krepapi` | `true` | If `true`, players **without** the mod (or who don’t finish setup in time) can be **kicked**. Set `false` only if you accept vanilla clients or incomplete handshakes. |
 | `minimum-mod-version` | `"1.0"` | Lowest KrepAPI **mod** version you allow. Wrong syntax here **disables** the plugin at startup—check the server log. |
+| `handshake-send-delay-ticks` | `0` | Wait this many ticks after join before sending `s2c_hello` (0 = same tick). The timeout window starts **after** hello is sent. |
 | `handshake-timeout-ticks` | `200` | How long to wait for the client to answer before kicking (20 ticks ≈ 1 second). |
 
 **Per key: `bindings.<your-id>`**

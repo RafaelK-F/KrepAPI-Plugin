@@ -1,0 +1,42 @@
+plugins {
+    id 'java'
+}
+
+group = 'net.shik'
+version = rootProject.version
+
+repositories {
+    maven {
+        name = 'papermc'
+        url = 'https://repo.papermc.io/repository/maven-public/'
+    }
+}
+
+dependencies {
+    compileOnly 'com.velocitypowered:velocity-api:3.4.0-SNAPSHOT'
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(21)
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release.set(21)
+}
+
+jar {
+    archiveBaseName = 'KrepAPI-Velocity-Forward'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+processResources {
+    def props = [version: version]
+    inputs.properties props
+    filteringCharset = 'UTF-8'
+    filesMatching('velocity-plugin.json') {
+        expand props
+    }
+}

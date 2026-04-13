@@ -1,5 +1,5 @@
-# Same as KrepAPI Paper reference: console lines prefixed [KrepAPI-Debug] and NDJSON in plugins/KrepAPI-Plugin/debug-*.json.
-# Also enabled when the server JVM has -Dkrepapi.debug=true or an empty krepapi-debug.txt exists in the server working directory (Fabric dedicated parity).
+# Same as KrepAPI Paper reference: console lines prefixed [DEBUG] and NDJSON in plugins/KrepAPI-Plugin/debug-*.json.
+# Also enabled when the server JVM has -Dkrepapi.debug=true or an empty DEBUG.txt exists in the server working directory (Fabric dedicated parity).
 # Legacy key `debug` is still accepted if present; prefer `debug-logging` to match KrepAPI.
 debug-logging: false
 # When debug-logging is true: chunk long hex in the console, add thread name + structured hex to NDJSON, decode-error details,
@@ -22,8 +22,18 @@ update-check:
 require-krepapi: true
 # Minimum accepted KrepAPI client mod version (see KrepAPI protocol docs for expression syntax).
 minimum-mod-version: "1.0"
-# Ticks before kicking when require-krepapi is true (20 ticks = 1 second).
+# Optional: wait this many ticks after join before sending s2c_hello (0 = same tick). Can help if something else
+# on the server floods the play-phase connection on join. The handshake timeout window starts after hello is sent.
+handshake-send-delay-ticks: 0
+# Ticks before kicking when require-krepapi is true, counted from when s2c_hello is sent (20 ticks = 1 second).
 handshake-timeout-ticks: 200
+#
+# Troubleshooting "KrepAPI handshake timed out" when the Fabric mod is installed:
+# - Server debug shows S2C hello but never any C2S krepapi:* line → the backend is not receiving c2s_client_info.
+#   Common causes: a proxy (Velocity/Bungee) or firewall path that does not pass custom payloads both ways; a Velocity
+#   plugin that cancels plugin messages; or bungee-plugin-message-channel / another mod breaking messaging (see PaperMC
+#   Velocity plugin messaging docs). Test by joining the Paper backend directly (bypassing the proxy) on the same client.
+# - Not a LuckPerms issue: krepapi.* only affects update chat, not the binary handshake.
 
 # Key bindings: each entry key is the action id (stable protocol identifier); values are UI label, key, and command.
 # - key: GLFW key code (e.g. 71 = G, 78 = N). See GLFW docs / key tables.

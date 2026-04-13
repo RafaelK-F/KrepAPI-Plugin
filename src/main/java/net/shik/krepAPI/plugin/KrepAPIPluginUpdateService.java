@@ -161,7 +161,7 @@ public final class KrepAPIPluginUpdateService {
             }
             if (plugin.getConfig().getBoolean("debug-logging", false)
                     && plugin.getConfig().getBoolean("debug-logging-verbose", false)) {
-                plugin.getLogger().info("[KrepAPI-Debug] [Update] mc=" + next.minecraftVersion()
+                plugin.getLogger().info("[DEBUG] [Update] mc=" + next.minecraftVersion()
                         + " current=" + next.currentVersion()
                         + " latest=" + next.latestVersion()
                         + " updateAvailable=" + next.updateAvailable()

@@ -79,7 +79,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         if (!isDebug()) {
             return;
         }
-        getLogger().info("[KrepAPI-Debug] " + msg);
+        getLogger().info("[DEBUG] " + msg);
     }
 
     /** Console-only line when {@link #isDebugVerbose()} is true. */
@@ -87,7 +87,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         if (!isDebugVerbose()) {
             return;
         }
-        getLogger().info("[KrepAPI-Debug] " + msg);
+        getLogger().info("[DEBUG] " + msg);
     }
 
     private void debugJson(String event, String fieldsJson) {
@@ -170,7 +170,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 }
                 java.io.File f = new java.io.File(dir, "debug-" + System.currentTimeMillis() + ".json");
                 debugWriter = new java.io.FileWriter(f, true);
-                getLogger().info("[KrepAPI-Debug] NDJSON debug log: " + f.getName());
+                getLogger().info("[DEBUG] NDJSON debug log: " + f.getName());
                 String mcVer = "?";
                 try {
                     mcVer = Bukkit.getServer().getMinecraftVersion();
@@ -190,7 +190,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 } catch (java.io.IOException ignored) {
                 }
             } catch (java.io.IOException ex) {
-                getLogger().warning("[KrepAPI-Debug] Failed to open debug log: " + ex.getMessage());
+                getLogger().warning("[DEBUG] Failed to open debug log: " + ex.getMessage());
             }
         }
     }
@@ -265,14 +265,14 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         String arrow = "S2C".equals(direction) ? " -> " : " <- ";
         String note = consoleSuffix != null ? consoleSuffix : "";
         if (isDebugVerbose() && hex.length() > 360) {
-            getLogger().info("[KrepAPI-Debug] " + direction + " " + channel + arrow + player.getName() + note
+            getLogger().info("[DEBUG] " + direction + " " + channel + arrow + player.getName() + note
                     + " (" + payload.length + " bytes) [verbose hex chunks]");
             for (int i = 0; i < hex.length(); i += 360) {
-                getLogger().info("[KrepAPI-Debug]   "
+                getLogger().info("[DEBUG]   "
                         + hex.substring(i, Math.min(i + 360, hex.length())));
             }
         } else {
-            getLogger().info("[KrepAPI-Debug] " + direction + " " + channel + arrow + player.getName() + note
+            getLogger().info("[DEBUG] " + direction + " " + channel + arrow + player.getName() + note
                     + " (" + payload.length + " bytes): " + hex);
         }
         if (!isDebugVerbose()) {
@@ -334,7 +334,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         pluginUpdateService = new KrepAPIPluginUpdateService(this);
         pluginUpdateService.start();
         getLogger().info("KrepAPI enabled; " + bindingEntries.size() + " binding(s) loaded."
-                + (isDebug() ? " ([KrepAPI-Debug] ON" + (isDebugVerbose() ? ", verbose" : "") + ")" : ""));
+                + (isDebug() ? " ([DEBUG] ON" + (isDebugVerbose() ? ", verbose" : "") + ")" : ""));
         if (isDebug()) {
             debugV("runtime: java.version=" + System.getProperty("java.version")
                     + " user.dir=" + System.getProperty("user.dir"));
@@ -622,19 +622,37 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             debugJson("handshake_begin", hb);
         }
 
-        byte[] payload = ProtocolMessages.encodeHello(new ProtocolMessages.Hello(
-                KrepapiProtocolVersion.CURRENT,
-                flags,
-                effectiveMin,
-                nonce
-        ));
-        debugPluginBytes("S2C", KrepapiChannels.S2C_HELLO, player, null, payload);
-        player.sendPluginMessage(this, KrepapiChannels.S2C_HELLO, payload);
+        UUID joinPlayerId = player.getUniqueId();
+        long helloSendDelay = Math.max(0L, getConfig().getLong("handshake-send-delay-ticks", 0L));
+        boolean requireKrepapi = getConfig().getBoolean("require-krepapi", true);
+        Runnable sendHelloAndArmTimeout = () -> {
+            Player p = getServer().getPlayer(joinPlayerId);
+            if (p == null || !p.isOnline()) {
+                return;
+            }
+            if (!pending.containsKey(joinPlayerId)) {
+                return;
+            }
+            byte[] payload = ProtocolMessages.encodeHello(new ProtocolMessages.Hello(
+                    KrepapiProtocolVersion.CURRENT,
+                    flags,
+                    effectiveMin,
+                    nonce
+            ));
+            debugPluginBytes("S2C", KrepapiChannels.S2C_HELLO, p, null, payload);
+            p.sendPluginMessage(this, KrepapiChannels.S2C_HELLO, payload);
 
-        long delay = getConfig().getLong("handshake-timeout-ticks", 200L);
-        if (getConfig().getBoolean("require-krepapi", true)) {
-            debug("onJoin: scheduling handshake timeout for " + player.getName() + " in " + delay + " ticks");
-            getServer().getScheduler().runTaskLater(this, () -> checkTimeout(player.getUniqueId()), delay);
+            long timeoutTicks = getConfig().getLong("handshake-timeout-ticks", 200L);
+            if (requireKrepapi) {
+                debug("handshake: scheduling timeout for " + p.getName() + " in " + timeoutTicks + " ticks after hello");
+                getServer().getScheduler().runTaskLater(this, () -> checkTimeout(joinPlayerId), timeoutTicks);
+            }
+        };
+        if (helloSendDelay == 0L) {
+            sendHelloAndArmTimeout.run();
+        } else {
+            debug("onJoin: delaying s2c_hello by " + helloSendDelay + " ticks for " + player.getName());
+            getServer().getScheduler().runTaskLater(this, sendHelloAndArmTimeout, helloSendDelay);
         }
 
         if (!getConfig().getBoolean("require-krepapi", true)) {
