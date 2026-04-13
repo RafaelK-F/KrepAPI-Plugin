@@ -36,9 +36,16 @@ This plugin is the “server side” of [KrepAPI](https://github.com/RafaelK-F/K
 4. Edit **`plugins/KrepAPI/config.yml`** (bindings, timeouts, etc.).
 5. **Restart** the server so changes apply reliably (avoid `/reload` unless you know what you’re doing).
 
-### Behind Velocity (or another proxy)
+### Behind a proxy (Velocity / BungeeCord / Waterfall)
 
-If players connect through **Velocity** (or similar), plugin messages may not reach the backend unless the proxy **forwards** them. Build **`KrepAPI-Velocity-Forward-*.jar`** from this repo (`./gradlew :velocity:jar`) and put **only that JAR** on the **Velocity** `plugins` folder (not on Paper). It registers the `krepapi:*` channels and forwards them to the connected server. Without this, the Paper plugin may log `S2C krepapi:s2c_hello` but never receive `C2S` from the client—handshake times out.
+If players connect through a **proxy**, plugin messages may not reach the backend unless the proxy knows the `krepapi:*` channels.
+
+| Proxy | Forward JAR | Build | Install |
+|-------|-------------|-------|---------|
+| **Velocity** | `KrepAPI-Velocity-Forward-*.jar` | `./gradlew :velocity:jar` | Velocity `plugins/` only (not Paper) |
+| **BungeeCord / Waterfall** | `KrepAPI-Bungee-Forward-*.jar` | `./gradlew :bungee:jar` | Bungee `plugins/` only (not Paper) |
+
+Without the matching forward JAR on the proxy, the Paper plugin may log `S2C krepapi:s2c_hello` but never receive `C2S` from the client—handshake times out.
 
 ---
 
@@ -93,7 +100,8 @@ Only needed if you develop or don’t use a prebuilt JAR.
 
 - You need the **[KrepAPI](https://github.com/RafaelK-F/KrepAPI)** source repo **next to** this folder (default: `../KrepAPI`) so Gradle can pull the shared **protocol** module.
 - Use this project’s **Gradle wrapper** (currently **9.4.x**). Older Gradle (e.g. 8.8) fails when the composite build configures KrepAPI’s Fabric modules—Loom needs Gradle **9.2+**.
-- Run `./gradlew build`. Output: `build/libs/KrepAPI-Plugin-1.0.0.jar`.
+- Run `./gradlew build`. Output: `build/libs/KrepAPI-Plugin-*.jar`.
+- Optional proxy forwards (no KrepAPI protocol dependency): `./gradlew :velocity:jar` → `velocity/build/libs/KrepAPI-Velocity-Forward-*.jar`, `./gradlew :bungee:jar` → `bungee/build/libs/KrepAPI-Bungee-Forward-*.jar`.
 - The **`net.shik:protocol:…`** version in `build.gradle` must match **`mod_version`** in `KrepAPI/gradle.properties`.
 
 ---

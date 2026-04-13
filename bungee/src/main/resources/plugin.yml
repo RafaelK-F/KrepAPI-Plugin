@@ -1,0 +1,4 @@
+name: KrepAPI-Bungee-Forward
+version: ${version}
+main: net.shik.krepapi.bungee.KrepapiBungeeForwardPlugin
+author: shik

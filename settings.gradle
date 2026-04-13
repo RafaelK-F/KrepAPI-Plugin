@@ -3,5 +3,6 @@ rootProject.name = 'KrepAPI-Plugin'
 // Reuse KrepAPI protocol module (sibling repo); canonical path handles spaces (e.g. "My files").
 includeBuild(new File(settingsDir, '../KrepAPI').canonicalFile)
 
-// Optional proxy helper: put KrepAPI-Velocity-Forward-*.jar on the Velocity proxy (not on Paper).
+// Optional proxy helpers: put the matching *-Forward-*.jar on the proxy only (not on Paper).
 include 'velocity'
+include 'bungee'

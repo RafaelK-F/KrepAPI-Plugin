@@ -30,9 +30,10 @@ handshake-timeout-ticks: 200
 #
 # Troubleshooting "KrepAPI handshake timed out" when the Fabric mod is installed:
 # - Server debug shows S2C hello but never any C2S krepapi:* line → the backend is not receiving c2s_client_info.
-#   Common causes: a proxy (Velocity/Bungee) or firewall path that does not pass custom payloads both ways; a Velocity
-#   plugin that cancels plugin messages; or bungee-plugin-message-channel / another mod breaking messaging (see PaperMC
-#   Velocity plugin messaging docs). Test by joining the Paper backend directly (bypassing the proxy) on the same client.
+#   Common causes: a proxy (Velocity/Bungee) or firewall path that does not pass custom payloads both ways; missing the
+#   KrepAPI forward JAR on the proxy (KrepAPI-Velocity-Forward or KrepAPI-Bungee-Forward from this repo); a proxy plugin
+#   that cancels plugin messages; or bungee-plugin-message-channel / another mod breaking messaging. Test by joining the
+#   Paper backend directly (bypassing the proxy) on the same client.
 # - Not a LuckPerms issue: krepapi.* only affects update chat, not the binary handshake.
 
 # Key bindings: each entry key is the action id (stable protocol identifier); values are UI label, key, and command.
