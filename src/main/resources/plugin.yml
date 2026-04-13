@@ -16,3 +16,11 @@ permissions:
   krepapi.admin:
     description: Allows use of /krepapi admin commands
     default: op
+  krepapi.update.notify:
+    description: Receive in-game KrepAPI plugin update notices (join) when a newer JAR is published
+    default: op
+  krepapi.*:
+    description: All KrepAPI permissions (admin commands + update notices)
+    children:
+      krepapi.admin: true
+      krepapi.update.notify: true

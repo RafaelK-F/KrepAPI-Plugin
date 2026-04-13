@@ -21,6 +21,7 @@ import org.bukkit.plugin.Plugin;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.plugin.messaging.PluginMessageListener;
 import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import net.kyori.adventure.text.Component;
 import net.shik.krepapi.protocol.KrepapiCapabilities;
@@ -51,6 +52,8 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
 
     private List<ProtocolMessages.BindingEntry> bindingEntries = List.of();
     private Map<String, String> actionToCommand = Map.of();
+
+    private @Nullable KrepAPIPluginUpdateService pluginUpdateService;
 
     /** NDJSON stream; same layout as KrepAPI Paper reference plugin. */
     private java.io.Writer debugWriter;
@@ -152,6 +155,17 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         saveConfig();
     }
 
+    /** Cached remote plugin version check (same {@code versions.json} as the KrepAPI repo). */
+    @Nullable KrepAPIPluginUpdateService.PluginUpdateSnapshot getPluginUpdateSnapshot() {
+        return pluginUpdateService == null ? null : pluginUpdateService.getSnapshot();
+    }
+
+    void refreshPluginUpdateAfterReload() {
+        if (pluginUpdateService != null) {
+            pluginUpdateService.refreshAfterConfigReload();
+        }
+    }
+
     /** Console-only hex dump of plugin-message payloads (not written to NDJSON). */
     private void debugPayload(String prefix, byte[] payload) {
         if (!isDebug()) {
@@ -202,12 +216,18 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         getServer().getMessenger().registerIncomingPluginChannel(this, KrepapiChannels.C2S_RAW_KEY, this);
         getServer().getMessenger().registerIncomingPluginChannel(this, KrepapiChannels.C2S_MOUSE_ACTION, this);
         getCommand("krepapi").setExecutor(new KrepAPICommand(this));
+        pluginUpdateService = new KrepAPIPluginUpdateService(this);
+        pluginUpdateService.start();
         getLogger().info("KrepAPI enabled; " + bindingEntries.size() + " binding(s) loaded."
                 + (isDebug() ? " ([KrepAPI-Debug] ON)" : ""));
     }
 
     @Override
     public void onDisable() {
+        if (pluginUpdateService != null) {
+            pluginUpdateService.stop();
+            pluginUpdateService = null;
+        }
         closeDebugFile();
         getServer().getMessenger().unregisterIncomingPluginChannel(this, KrepapiChannels.C2S_CLIENT_INFO);
         getServer().getMessenger().unregisterIncomingPluginChannel(this, KrepapiChannels.C2S_KEY_ACTION);
@@ -467,6 +487,22 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         if (!getConfig().getBoolean("require-krepapi", true)) {
             debug("onJoin: mod not required, scheduling binding sync for " + player.getName() + " in 40 ticks");
             getServer().getScheduler().runTaskLater(this, () -> sendConfiguredBindings(player), 40L);
+        }
+
+        long notifyDelay = getConfig().getLong("update-check.notify-delay-ticks", 80L);
+        if (notifyDelay < 1L) {
+            notifyDelay = 1L;
+        }
+        if (getConfig().getBoolean("update-check.enabled", true)
+                && getConfig().getBoolean("update-check.notify-on-join", true)
+                && pluginUpdateService != null) {
+            UUID joinId = player.getUniqueId();
+            getServer().getScheduler().runTaskLater(this, () -> {
+                Player p = getServer().getPlayer(joinId);
+                if (p != null && p.isOnline()) {
+                    pluginUpdateService.maybeNotifyJoin(p);
+                }
+            }, notifyDelay);
         }
     }
 

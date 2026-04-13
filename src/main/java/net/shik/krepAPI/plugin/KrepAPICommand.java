@@ -217,6 +217,23 @@ final class KrepAPICommand implements TabExecutor {
                             + (c.featureId() != null ? c.featureId() + " " : "") + ">= " + c.minimumBuildVersion(),
                             NamedTextColor.AQUA))));
         }
+
+        var ups = plugin.getPluginUpdateSnapshot();
+        if (ups != null && plugin.getConfig().getBoolean("update-check.enabled", true)) {
+            if (ups.lastError() != null) {
+                sender.sendMessage(Component.text("Plugin update check: failed (" + ups.lastError() + ")",
+                        NamedTextColor.RED));
+            } else {
+                sender.sendMessage(Component.text(
+                        "Plugin JAR: " + (ups.currentVersion() != null ? ups.currentVersion() : "?")
+                                + "  Remote latest: " + (ups.latestVersion() != null ? ups.latestVersion() : "?")
+                                + "  MC: " + (ups.minecraftVersion() != null ? ups.minecraftVersion() : "?"),
+                        NamedTextColor.YELLOW));
+                sender.sendMessage(Component.text(
+                        "Update available: " + ups.updateAvailable(),
+                        ups.updateAvailable() ? NamedTextColor.GOLD : NamedTextColor.GREEN));
+            }
+        }
     }
 
     private void showPlayerStatus(CommandSender sender, Player target) {
@@ -248,6 +265,7 @@ final class KrepAPICommand implements TabExecutor {
         plugin.reloadConfig();
         plugin.refreshDebugLoggingAfterConfigReload();
         plugin.reloadBindings();
+        plugin.refreshPluginUpdateAfterReload();
         sender.sendMessage(Component.text("KrepAPI config reloaded; " + plugin.bindings().size() + " binding(s)."
                 + (plugin.isKrepapiDebugActive() ? " (debug ON)" : ""), NamedTextColor.GREEN));
     }

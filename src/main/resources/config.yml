@@ -3,6 +3,18 @@
 # Legacy key `debug` is still accepted if present; prefer `debug-logging` to match KrepAPI.
 debug-logging: false
 
+# Remote version manifest (same JSON layout as KrepAPI .system/plugin/versions.json). Notifies players with krepapi.* or krepapi.update.notify when a newer JAR exists; click opens the download in the browser (replace the file on the host manually).
+update-check:
+  enabled: true
+  notify-on-join: true
+  # Ticks after join before sending the update message (allows client to finish loading).
+  notify-delay-ticks: 80
+  # How often to re-fetch versions.json (async). Default 360 minutes = 6 hours.
+  interval-minutes: 360
+  versions-url: "https://raw.githubusercontent.com/RafaelK-F/KrepAPI/main/.system/plugin/versions.json"
+  jar-download-base-url: "https://github.com/RafaelK-F/KrepAPI/raw/main/.system/plugin/jar/"
+  fallback-page-url: "https://github.com/RafaelK-F/KrepAPI"
+
 # Kick players who do not complete the KrepAPI handshake (no mod / wrong version).
 require-krepapi: true
 # Minimum accepted KrepAPI client mod version (see KrepAPI protocol docs for expression syntax).

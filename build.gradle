@@ -24,6 +24,7 @@ configurations {
 dependencies {
     // Lowest Paper API in the supported server range; one jar targets Paper 1.21.4 through 26.1.1 (see README).
     compileOnly("io.papermc.paper:paper-api:1.21.4-R0.1-SNAPSHOT")
+    compileOnly("com.google.code.gson:gson:2.11.0")
     // Substituted from composite includeBuild('../KrepAPI'); version must match KrepAPI mod_version.
     implementation('net.shik:protocol:1.2.0')
     protocolEmbedded('net.shik:protocol:1.2.0')
