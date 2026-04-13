@@ -2,6 +2,9 @@
 # Also enabled when the server JVM has -Dkrepapi.debug=true or an empty krepapi-debug.txt exists in the server working directory (Fabric dedicated parity).
 # Legacy key `debug` is still accepted if present; prefer `debug-logging` to match KrepAPI.
 debug-logging: false
+# When debug-logging is true: chunk long hex in the console, add thread name + structured hex to NDJSON, decode-error details,
+# capability bit names, constraint lists on handshake, session_start line, and extra update-check / dispatch detail.
+debug-logging-verbose: false
 
 # Remote version manifest (same JSON layout as KrepAPI .system/plugin/versions.json). Notifies players with krepapi.* or krepapi.update.notify when a newer JAR exists; click opens the download in the browser (replace the file on the host manually).
 update-check:

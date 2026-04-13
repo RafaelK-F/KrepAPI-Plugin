@@ -10,6 +10,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 
+import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -65,6 +66,11 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 || KrepapiServerDebug.jvmOrMarkerFileEnabled();
     }
 
+    /** Extra detail: chunked hex, per-message NDJSON, thread field, decode errors, capability names. Requires {@link #isDebug()}. */
+    public boolean isDebugVerbose() {
+        return isDebug() && getConfig().getBoolean("debug-logging-verbose", false);
+    }
+
     boolean isKrepapiDebugActive() {
         return isDebug();
     }
@@ -76,18 +82,80 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         getLogger().info("[KrepAPI-Debug] " + msg);
     }
 
+    /** Console-only line when {@link #isDebugVerbose()} is true. */
+    private void debugV(String msg) {
+        if (!isDebugVerbose()) {
+            return;
+        }
+        getLogger().info("[KrepAPI-Debug] " + msg);
+    }
+
     private void debugJson(String event, String fieldsJson) {
         synchronized (debugLock) {
             if (debugWriter == null) {
                 return;
             }
             try {
+                String extra = "";
+                if (isDebugVerbose()) {
+                    extra = ",\"thread\":" + KrepapiServerDebug.jsonString(Thread.currentThread().getName());
+                }
                 debugWriter.write("{\"ts\":" + System.currentTimeMillis()
-                        + ",\"event\":\"" + event + "\"," + fieldsJson + "}\n");
+                        + ",\"event\":\"" + event + "\"," + fieldsJson + extra + "}\n");
                 debugWriter.flush();
             } catch (java.io.IOException ignored) {
             }
         }
+    }
+
+    private static String describeCapabilities(int caps) {
+        if (caps == 0) {
+            return "(none)";
+        }
+        StringBuilder sb = new StringBuilder();
+        if ((caps & KrepapiCapabilities.KEY_OVERRIDE) != 0) {
+            sb.append("KEY_OVERRIDE ");
+        }
+        if ((caps & KrepapiCapabilities.RAW_KEYS) != 0) {
+            sb.append("RAW_KEYS ");
+        }
+        if ((caps & KrepapiCapabilities.SERVER_RAW_CAPTURE) != 0) {
+            sb.append("SERVER_RAW_CAPTURE ");
+        }
+        if ((caps & KrepapiCapabilities.INTERCEPT_KEYS) != 0) {
+            sb.append("INTERCEPT_KEYS ");
+        }
+        if ((caps & KrepapiCapabilities.SERVER_MOUSE_CAPTURE) != 0) {
+            sb.append("SERVER_MOUSE_CAPTURE ");
+        }
+        int known = KrepapiCapabilities.KEY_OVERRIDE | KrepapiCapabilities.RAW_KEYS
+                | KrepapiCapabilities.SERVER_RAW_CAPTURE | KrepapiCapabilities.INTERCEPT_KEYS
+                | KrepapiCapabilities.SERVER_MOUSE_CAPTURE;
+        int rest = caps & ~known;
+        if (rest != 0) {
+            if (sb.length() > 0) {
+                sb.append(' ');
+            }
+            sb.append("OTHER_0x").append(Integer.toHexString(rest));
+        }
+        return sb.toString().trim();
+    }
+
+    private static String constraintsJsonArray(@NotNull List<KrepapiVersionPolicy.Constraint> list) {
+        if (list.isEmpty()) {
+            return "[]";
+        }
+        StringBuilder sb = new StringBuilder("[");
+        for (int i = 0; i < list.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            KrepapiVersionPolicy.Constraint c = list.get(i);
+            String s = (c.featureId() != null ? c.featureId() + ":" : "global:") + c.minimumBuildVersion();
+            sb.append(KrepapiServerDebug.jsonString(s));
+        }
+        sb.append(']');
+        return sb.toString();
     }
 
     private void openDebugFile() {
@@ -103,6 +171,24 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 java.io.File f = new java.io.File(dir, "debug-" + System.currentTimeMillis() + ".json");
                 debugWriter = new java.io.FileWriter(f, true);
                 getLogger().info("[KrepAPI-Debug] NDJSON debug log: " + f.getName());
+                String mcVer = "?";
+                try {
+                    mcVer = Bukkit.getServer().getMinecraftVersion();
+                } catch (Throwable ignored) {
+                }
+                try {
+                    debugWriter.write("{\"ts\":" + System.currentTimeMillis()
+                            + ",\"event\":\"session_start\""
+                            + ",\"pluginVersion\":" + KrepapiServerDebug.jsonString(getPluginMeta().getVersion())
+                            + ",\"protocolVersion\":" + KrepapiProtocolVersion.CURRENT
+                            + ",\"minecraftVersion\":" + KrepapiServerDebug.jsonString(mcVer)
+                            + ",\"debugVerbose\":" + isDebugVerbose()
+                            + ",\"dataDir\":" + KrepapiServerDebug.jsonString(getDataFolder().getAbsolutePath())
+                            + ",\"jvmDebugProp\":" + KrepapiServerDebug.jsonString(System.getProperty(KrepapiServerDebug.JVM_PROPERTY))
+                            + "}\n");
+                    debugWriter.flush();
+                } catch (java.io.IOException ignored) {
+                }
             } catch (java.io.IOException ex) {
                 getLogger().warning("[KrepAPI-Debug] Failed to open debug log: " + ex.getMessage());
             }
@@ -166,13 +252,42 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         }
     }
 
-    /** Console-only hex dump of plugin-message payloads (not written to NDJSON). */
-    private void debugPayload(String prefix, byte[] payload) {
+    /**
+     * Logs raw plugin-channel bytes: one line, or chunked lines when {@link #isDebugVerbose()} and hex is long.
+     * When verbose, also writes one {@code plugin_message} NDJSON line with channel, player, length, hex (truncated at 8k hex chars).
+     */
+    private void debugPluginBytes(@NotNull String direction, @NotNull String channel, @NotNull Player player,
+                                  @Nullable String consoleSuffix, byte @NotNull [] payload) {
         if (!isDebug()) {
             return;
         }
         String hex = HexFormat.of().withUpperCase().formatHex(payload);
-        getLogger().info("[KrepAPI-Debug] " + prefix + " (" + payload.length + " bytes): " + hex);
+        String arrow = "S2C".equals(direction) ? " -> " : " <- ";
+        String note = consoleSuffix != null ? consoleSuffix : "";
+        if (isDebugVerbose() && hex.length() > 360) {
+            getLogger().info("[KrepAPI-Debug] " + direction + " " + channel + arrow + player.getName() + note
+                    + " (" + payload.length + " bytes) [verbose hex chunks]");
+            for (int i = 0; i < hex.length(); i += 360) {
+                getLogger().info("[KrepAPI-Debug]   "
+                        + hex.substring(i, Math.min(i + 360, hex.length())));
+            }
+        } else {
+            getLogger().info("[KrepAPI-Debug] " + direction + " " + channel + arrow + player.getName() + note
+                    + " (" + payload.length + " bytes): " + hex);
+        }
+        if (!isDebugVerbose()) {
+            return;
+        }
+        boolean trunc = hex.length() > 8192;
+        String hexJson = trunc ? hex.substring(0, 8192) : hex;
+        debugJson("plugin_message",
+                "\"dir\":" + KrepapiServerDebug.jsonString(direction)
+                        + ",\"channel\":" + KrepapiServerDebug.jsonString(channel)
+                        + ",\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                        + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                        + ",\"len\":" + payload.length
+                        + (trunc ? ",\"hexTruncated\":true" : "")
+                        + ",\"hex\":" + KrepapiServerDebug.jsonString(hexJson));
     }
 
     // ── State accessors (for /krepapi command) ──────────────────────────
@@ -219,7 +334,11 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         pluginUpdateService = new KrepAPIPluginUpdateService(this);
         pluginUpdateService.start();
         getLogger().info("KrepAPI enabled; " + bindingEntries.size() + " binding(s) loaded."
-                + (isDebug() ? " ([KrepAPI-Debug] ON)" : ""));
+                + (isDebug() ? " ([KrepAPI-Debug] ON" + (isDebugVerbose() ? ", verbose" : "") + ")" : ""));
+        if (isDebug()) {
+            debugV("runtime: java.version=" + System.getProperty("java.version")
+                    + " user.dir=" + System.getProperty("user.dir"));
+        }
     }
 
     @Override
@@ -300,7 +419,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             return;
         }
         byte[] payload = ProtocolMessages.encodeRawCaptureConfig(config);
-        debugPayload("S2C_RAW_CAPTURE -> " + player.getName(), payload);
+        debugPluginBytes("S2C", KrepapiChannels.S2C_RAW_CAPTURE, player, null, payload);
         player.sendPluginMessage(this, KrepapiChannels.S2C_RAW_CAPTURE, payload);
     }
 
@@ -313,7 +432,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             return;
         }
         byte[] payload = ProtocolMessages.encodeInterceptKeysSync(sync);
-        debugPayload("S2C_INTERCEPT_KEYS -> " + player.getName(), payload);
+        debugPluginBytes("S2C", KrepapiChannels.S2C_INTERCEPT_KEYS, player, null, payload);
         player.sendPluginMessage(this, KrepapiChannels.S2C_INTERCEPT_KEYS, payload);
     }
 
@@ -332,7 +451,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             return;
         }
         byte[] payload = ProtocolMessages.encodeMouseCaptureConfig(config);
-        debugPayload("S2C_MOUSE_CAPTURE -> " + player.getName(), payload);
+        debugPluginBytes("S2C", KrepapiChannels.S2C_MOUSE_CAPTURE, player, null, payload);
         player.sendPluginMessage(this, KrepapiChannels.S2C_MOUSE_CAPTURE, payload);
     }
 
@@ -398,7 +517,21 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         bindingEntries = List.copyOf(entries);
         actionToCommand = Map.copyOf(commands);
         debug("loadBindingConfig: " + entries.size() + " binding(s) loaded");
-        debugJson("bindings_loaded", "\"count\":" + entries.size());
+        {
+            String bl = "\"count\":" + entries.size();
+            if (isDebugVerbose() && !entries.isEmpty()) {
+                StringBuilder ids = new StringBuilder("[");
+                for (int i = 0; i < entries.size(); i++) {
+                    if (i > 0) {
+                        ids.append(',');
+                    }
+                    ids.append(KrepapiServerDebug.jsonString(entries.get(i).actionId()));
+                }
+                ids.append(']');
+                bl += ",\"actionIds\":" + ids;
+            }
+            debugJson("bindings_loaded", bl);
+        }
     }
 
     private boolean utf8Within(String value, int maxBytes, String label) {
@@ -425,10 +558,17 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         }
         try {
             byte[] payload = ProtocolMessages.encodeBindingsSync(new ProtocolMessages.BindingsSync(bindingEntries));
-            debugPayload("S2C_BINDINGS -> " + player.getName() + " (" + bindingEntries.size() + " entries)", payload);
+            debugPluginBytes("S2C", KrepapiChannels.S2C_BINDINGS, player,
+                    " (" + bindingEntries.size() + " entries)", payload);
             player.sendPluginMessage(this, KrepapiChannels.S2C_BINDINGS, payload);
         } catch (IllegalArgumentException ex) {
             getLogger().warning("Could not send bindings to " + player.getName() + ": " + ex.getMessage());
+            if (isDebug()) {
+                debug("sendConfiguredBindings encode failed: " + ex.getMessage());
+                debugJson("bindings_encode_error",
+                        "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                                + ",\"error\":" + KrepapiServerDebug.jsonString(ex.getMessage()));
+            }
         }
     }
 
@@ -463,11 +603,24 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 + " nonce=" + Long.toHexString(nonce) + " effectiveMin=" + effectiveMin
                 + " flags=0x" + Integer.toHexString(flags & 0xFF)
                 + " constraints=" + snap.size());
-        debugJson("handshake_begin",
-                "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
-                        + ",\"uuid\":\"" + player.getUniqueId() + "\""
-                        + ",\"effectiveMin\":" + KrepapiServerDebug.jsonString(effectiveMin)
-                        + ",\"flags\":" + (flags & 0xFF));
+        if (isDebugVerbose() && !snap.isEmpty()) {
+            debugV("handshake constraints: " + snap.stream().map(c ->
+                    (c.featureId() != null ? c.featureId() + ":" : "global:") + c.minimumBuildVersion())
+                    .reduce((a, b) -> a + "; " + b).orElse(""));
+        }
+        {
+            String hb = "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                    + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                    + ",\"effectiveMin\":" + KrepapiServerDebug.jsonString(effectiveMin)
+                    + ",\"flags\":" + (flags & 0xFF)
+                    + ",\"nonceHex\":\"" + Long.toHexString(nonce) + "\""
+                    + ",\"nonceDecimal\":" + nonce;
+            if (isDebugVerbose()) {
+                hb += ",\"configMinimum\":" + KrepapiServerDebug.jsonString(configMin)
+                        + ",\"constraints\":" + constraintsJsonArray(snap);
+            }
+            debugJson("handshake_begin", hb);
+        }
 
         byte[] payload = ProtocolMessages.encodeHello(new ProtocolMessages.Hello(
                 KrepapiProtocolVersion.CURRENT,
@@ -475,7 +628,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 effectiveMin,
                 nonce
         ));
-        debugPayload("S2C_HELLO -> " + player.getName(), payload);
+        debugPluginBytes("S2C", KrepapiChannels.S2C_HELLO, player, null, payload);
         player.sendPluginMessage(this, KrepapiChannels.S2C_HELLO, payload);
 
         long delay = getConfig().getLong("handshake-timeout-ticks", 200L);
@@ -536,7 +689,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
 
     @Override
     public void onPluginMessageReceived(@NotNull String channel, @NotNull Player player, byte @NotNull [] message) {
-        debugPayload("C2S " + channel + " <- " + player.getName(), message);
+        debugPluginBytes("C2S", channel, player, null, message);
         if (KrepapiChannels.C2S_CLIENT_INFO.equals(channel)) {
             onClientInfo(player, message);
         } else if (KrepapiChannels.C2S_KEY_ACTION.equals(channel)) {
@@ -554,6 +707,14 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             info = ProtocolMessages.decodeClientInfo(message);
         } catch (RuntimeException ex) {
             getLogger().warning("Bad client_info from " + player.getName() + ": " + ex.getMessage());
+            if (isDebug()) {
+                debug("decodeClientInfo failed: " + ex.getClass().getName() + ": " + ex.getMessage());
+                debugJson("client_info_decode_error",
+                        "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                                + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                                + ",\"exception\":" + KrepapiServerDebug.jsonString(ex.getClass().getName())
+                                + ",\"message\":" + KrepapiServerDebug.jsonString(ex.getMessage()));
+            }
             return;
         }
         debug("onClientInfo: " + player.getName()
@@ -561,6 +722,7 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                 + " modVersion=" + info.modVersion()
                 + " caps=0x" + Integer.toHexString(info.capabilities())
                 + " nonce=" + Long.toHexString(info.challengeNonce()));
+        debugV("onClientInfo capabilities: " + describeCapabilities(info.capabilities()));
         PendingHandshake h = pending.get(player.getUniqueId());
         if (h == null || h.nonce != info.challengeNonce()) {
             debug("onClientInfo: " + player.getName() + " nonce mismatch or no pending handshake"
@@ -590,19 +752,33 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
         if (fail != null) {
             debug("onClientInfo: " + player.getName() + " version check failed: "
                     + fail.reason() + " (mod=" + info.modVersion() + "), kicking");
-            debugJson("kick_version_mismatch",
-                    "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
-                            + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
-                            + ",\"reason\":" + KrepapiServerDebug.jsonString(fail.reason()));
+            {
+                String kv = "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                        + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
+                        + ",\"reason\":" + KrepapiServerDebug.jsonString(fail.reason().name());
+                if (isDebugVerbose()) {
+                    kv += ",\"failedConstraint\":" + KrepapiServerDebug.jsonString(
+                            fail.constraint().featureId() != null
+                                    ? fail.constraint().featureId() + ":" + fail.constraint().minimumBuildVersion()
+                                    : "global:" + fail.constraint().minimumBuildVersion());
+                }
+                debugJson("kick_version_mismatch", kv);
+            }
             player.kick(Component.text(KrepapiKickReasons.forVersionCheckFailure(fail)));
             return;
         }
         debug("onClientInfo: " + player.getName() + " handshake OK, capabilities stored");
-        debugJson("handshake_complete",
-                "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
-                        + ",\"uuid\":\"" + player.getUniqueId() + "\""
-                        + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
-                        + ",\"capabilities\":\"0x" + Integer.toHexString(info.capabilities()) + "\"");
+        {
+            String hc = "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
+                    + ",\"uuid\":\"" + player.getUniqueId() + "\""
+                    + ",\"modVersion\":" + KrepapiServerDebug.jsonString(info.modVersion())
+                    + ",\"capabilities\":\"0x" + Integer.toHexString(info.capabilities()) + "\"";
+            if (isDebugVerbose()) {
+                hc += ",\"capabilitiesBits\":" + info.capabilities()
+                        + ",\"capabilitiesNames\":" + KrepapiServerDebug.jsonString(describeCapabilities(info.capabilities()));
+            }
+            debugJson("handshake_complete", hc);
+        }
         clientCapabilities.put(player.getUniqueId(), info.capabilities());
         getServer().getScheduler().runTaskLater(this, () -> sendConfiguredBindings(player), 1L);
     }
@@ -637,9 +813,12 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             lastBindingCommandNanos.put(player.getUniqueId(), now);
             final String stripped = command.startsWith("/") ? command.substring(1) : command;
             debug("onKeyAction: dispatching /" + stripped + " for " + player.getName());
+            debugV("dispatchCommand raw=\"" + command + "\" stripped=\"" + stripped + "\" cooldownNanos="
+                    + BINDING_COOLDOWN_NANOS);
             debugJson("key_command_dispatch",
                     "\"player\":" + KrepapiServerDebug.jsonString(player.getName())
-                            + ",\"command\":" + KrepapiServerDebug.jsonString(stripped));
+                            + ",\"command\":" + KrepapiServerDebug.jsonString(stripped)
+                            + ",\"rawConfigCommand\":" + KrepapiServerDebug.jsonString(command));
             getServer().getScheduler().runTask(this, () -> {
                 if (player.isOnline()) {
                     getServer().dispatchCommand(player, stripped);
@@ -647,6 +826,9 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             });
         } catch (RuntimeException ex) {
             getLogger().warning("Bad key_action from " + player.getName());
+            if (isDebugVerbose()) {
+                debugV("decodeKeyAction failed: " + ex.getClass().getName() + ": " + ex.getMessage());
+            }
         }
     }
 
@@ -666,6 +848,9 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
                             + ",\"seq\":" + ev.sequence());
         } catch (RuntimeException ex) {
             getLogger().warning("Bad raw_key from " + player.getName());
+            if (isDebugVerbose()) {
+                debugV("decodeRawKeyEvent failed: " + ex.getClass().getName() + ": " + ex.getMessage());
+            }
         }
     }
 
@@ -699,6 +884,9 @@ public final class KrepAPIPlugin extends JavaPlugin implements Listener, PluginM
             }
         } catch (RuntimeException ex) {
             getLogger().warning("Bad mouse_action from " + player.getName());
+            if (isDebugVerbose()) {
+                debugV("decodeMouseAction failed: " + ex.getClass().getName() + ": " + ex.getMessage());
+            }
         }
     }
 

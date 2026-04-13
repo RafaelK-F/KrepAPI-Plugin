@@ -98,12 +98,14 @@ final class KrepAPICommand implements TabExecutor {
         sender.sendMessage(Component.text("  Effective: " + (active ? "ON" : "OFF"),
                 active ? NamedTextColor.GREEN : NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  config debug-logging (or legacy debug): " + cfg, NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("  config debug-logging-verbose: "
+                + plugin.getConfig().getBoolean("debug-logging-verbose", false), NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("  JVM -D" + KrepapiServerDebug.JVM_PROPERTY + "=true: " + jvm,
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("  marker file ./" + KrepapiServerDebug.MARKER_FILENAME + ": " + marker,
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text(
-                "  When ON: NDJSON lines in plugins/" + plugin.getName() + "/debug-<time>.json",
+                "  When ON: NDJSON in plugins/" + plugin.getName() + "/debug-<time>.json; verbose adds per-message hex, thread, session_start, decode errors.",
                 NamedTextColor.GRAY));
         sender.sendMessage(Component.text("  Change file: /krepapi debug on|off|toggle", NamedTextColor.DARK_GRAY));
     }
@@ -187,6 +189,12 @@ final class KrepAPICommand implements TabExecutor {
         sender.sendMessage(Component.text("--- KrepAPI Status ---", NamedTextColor.GOLD));
         sender.sendMessage(Component.text("Debug: " + (plugin.isKrepapiDebugActive() ? "ON" : "OFF"),
                 NamedTextColor.YELLOW));
+        if (plugin.isKrepapiDebugActive()) {
+            sender.sendMessage(Component.text(
+                    "  Verbose (extra NDJSON + chunked hex + thread field): "
+                            + (plugin.isDebugVerbose() ? "ON" : "OFF"),
+                    NamedTextColor.YELLOW));
+        }
         sender.sendMessage(Component.text("Require mod: " + plugin.getConfig().getBoolean("require-krepapi", true),
                 NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Min mod version: "

@@ -95,10 +95,10 @@ public final class KrepAPIPluginUpdateService {
             return;
         }
         PluginUpdateSnapshot snap = snapshot.get();
-        if (!snap.updateAvailable || snap.latestVersion == null) {
+        if (!snap.updateAvailable() || snap.latestVersion() == null) {
             return;
         }
-        String url = snap.downloadUrl != null ? snap.downloadUrl : snap.fallbackUrl;
+        String url = snap.downloadUrl() != null ? snap.downloadUrl() : snap.fallbackUrl();
         if (url == null || url.isEmpty()) {
             return;
         }
@@ -120,8 +120,8 @@ public final class KrepAPIPluginUpdateService {
                 "A newer plugin build is available for your Minecraft version.",
                 NamedTextColor.GRAY);
 
-        String cur = snap.currentVersion != null ? snap.currentVersion : "?";
-        String lat = snap.latestVersion != null ? snap.latestVersion : "?";
+        String cur = snap.currentVersion() != null ? snap.currentVersion() : "?";
+        String lat = snap.latestVersion() != null ? snap.latestVersion() : "?";
         Component verLine = Component.text("Installed: ", NamedTextColor.DARK_GRAY)
                 .append(Component.text(cur, NamedTextColor.RED))
                 .append(Component.text("  →  ", NamedTextColor.DARK_GRAY))
@@ -155,9 +155,20 @@ public final class KrepAPIPluginUpdateService {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             PluginUpdateSnapshot next = fetchSnapshot();
             snapshot.set(next);
-            if (next.updateAvailable && next.latestVersion != null) {
-                plugin.getLogger().info("[Update] New KrepAPI-Plugin build available: " + next.latestVersion
-                        + " (running " + next.currentVersion + ")");
+            if (next.updateAvailable() && next.latestVersion() != null) {
+                plugin.getLogger().info("[Update] New KrepAPI-Plugin build available: " + next.latestVersion()
+                        + " (running " + next.currentVersion() + ")");
+            }
+            if (plugin.getConfig().getBoolean("debug-logging", false)
+                    && plugin.getConfig().getBoolean("debug-logging-verbose", false)) {
+                plugin.getLogger().info("[KrepAPI-Debug] [Update] mc=" + next.minecraftVersion()
+                        + " current=" + next.currentVersion()
+                        + " latest=" + next.latestVersion()
+                        + " updateAvailable=" + next.updateAvailable()
+                        + " jarBaseName=" + next.jarBaseName()
+                        + " downloadUrl=" + next.downloadUrl()
+                        + " knownVersions=" + next.knownVersions().size()
+                        + " err=" + next.lastError());
             }
         });
     }
